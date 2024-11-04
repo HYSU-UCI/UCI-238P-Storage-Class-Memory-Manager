@@ -30,7 +30,34 @@
 
 /* research the above Needed API and design accordingly */
 
-struct scm;
+#define VM_ADDR 0x600000000000
+
+struct scm {
+    int fd;
+    void *addr;
+    size_t utilized;
+    size_t capacity;
+};
+
+/* return 0 if it's regular file */
+int file_size(struct scm *scm) {
+
+    struct stat st;
+    
+    if (fstat(scm->fd, &st) == -1) {
+        TRACE("fstat failed");
+        return -1;
+    }    
+    if (!S_ISREG(st.st_mode)) {
+        TRACE("not a regualr file");
+        return -1;        
+    }
+
+    scm->capacity = (st.st_size / page_size()) * page_size();
+    scm->utilized = 0;
+
+    return (0 >= scm->capacity) ? -1 : 0;
+}
 
 /**
  * Initializes an SCM region using the file specified in pathname as the
@@ -42,7 +69,64 @@ struct scm;
  * return: an opaque handle or NULL on error
  */
 
-struct scm *scm_open(const char *pathname, int truncate);
+struct scm *scm_open(const char *pathname, int truncate) {
+
+    size_t curr;
+    size_t vm_addr;
+    struct scm *scm = malloc(sizeof(struct scm));
+    if (!scm) {
+        TRACE("scm malloc failed");
+        return NULL;
+    }
+
+    assert(pathname);
+    scm->fd = open(pathname, O_RDWR);
+    if (scm->fd == -1) {
+        TRACE("open failed");
+        free(scm);
+        return NULL;
+    }
+    if (-1 == file_size(scm)) {
+        TRACE("file_size");
+        close(scm->fd);
+        free(scm);
+        return NULL;
+    }
+
+    curr = (size_t)sbrk(0);
+    vm_addr = (VM_ADDR / page_size()) * page_size();
+    if (vm_addr < curr) {
+        TRACE("vm should be above");
+        close(scm->fd);
+        free(scm);
+        return NULL;
+    }
+
+    scm->addr = mmap((void *)vm_addr, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
+    if (MAP_FAILED == scm->addr) {
+        TRACE("mmap failed");
+        close(scm->fd);
+        free(scm);
+        return NULL;
+    }
+
+    /* truncates the SCM region */
+    if (truncate) {
+        if (ftruncate(scm->fd, scm->capacity) == -1) {
+            TRACE("ftruncate failed");
+            close(scm->fd);
+            free(scm);
+            return NULL;
+        }
+        scm->utilized = 0;       
+    }
+    else {
+        scm->utilized = *(size_t *)scm->addr;
+    }
+    scm->addr = (char *)scm->addr + sizeof(size_t);
+
+    return scm;
+}
 
 /**
  * Closes a previously opened SCM handle.
@@ -52,7 +136,42 @@ struct scm *scm_open(const char *pathname, int truncate);
  * Note: scm may be NULL
  */
 
-void scm_close(struct scm *scm);
+void scm_close(struct scm *scm) {
+    
+    if (scm->addr != MAP_FAILED) {
+        if (msync(scm->addr, scm->capacity, MS_SYNC) == -1) {
+            TRACE("mysync failed");
+            return;
+        }
+        if (munmap(scm->addr, scm->capacity)) {
+            TRACE("munmap failed");
+            return;
+        }
+    }
+    if (scm->fd) {
+        close(scm->fd);
+    }
+    FREE(scm);
+}
+
+void set_block_size(void *p, size_t n) {
+
+    size_t *sizeLocation = (size_t *)((char *)p + sizeof(short));
+    *sizeLocation = n;
+}
+
+/* stored at the start of base address */
+void set_utilized(void *p, size_t n) {
+    
+    *(size_t *)p = n;
+}
+
+/* 0 = free, 1 = currently used, 2 = used before */
+void set_block_status(void *p, short status) {
+    
+    *(short *)p = status;
+}
+
 
 /**
  * Analogous to the standard C malloc function, but using SCM region.
@@ -63,7 +182,66 @@ void scm_close(struct scm *scm);
  * return: a pointer to the start of the allocated memory or NULL on error
  */
 
-void *scm_malloc(struct scm *scm, size_t n);
+/*
++----------------+------------------+-----------------+
+| Block Status   | Block Size       | Data ...        |
+| (short)        | (size_t)         |                 |
++----------------+------------------+-----------------+
+*/
+void *scm_malloc(struct scm *scm, size_t n) {
+
+    void *start;
+    void *curr;
+    void *end;
+    size_t *block_size_addr;
+    short *status_addr;
+    size_t curr_size = n + sizeof(short) + sizeof(size_t);
+
+    if (!n) {
+        TRACE("n is empty");
+        return NULL;
+    }
+
+    start = (char *)scm->addr;
+    curr = start;
+    end = (char *)start + scm->capacity;
+
+    while (curr < end) {
+        /* free space */
+        status_addr = (short *)curr;
+        if (*status_addr == 0) {
+            if ((char *)curr + curr_size > (char *)end) {
+                break;
+            }
+            scm->utilized += curr_size;
+            set_block_size(curr, curr_size);
+            set_block_status(curr, 1);
+            set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
+            return (char *)curr + sizeof(short) + sizeof(size_t);
+        }
+        /* used before, check if space is enough*/
+        else if (*status_addr == 2) {
+            block_size_addr = (size_t *)((char *)curr + sizeof(short));
+            if (*block_size_addr >= curr_size) {
+                scm->utilized += curr_size;
+                set_block_size(curr, curr_size);
+                set_block_status(curr, 1);
+                set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
+                return (char *)curr + sizeof(short) + sizeof(size_t);
+            }          
+            else {
+                curr = (char *)curr + *block_size_addr;
+            }  
+        }
+        /* currently using*/
+        else {
+            block_size_addr = (size_t *)((char *)curr + sizeof(short));
+            curr = (char *)curr + *block_size_addr;
+        }
+    }
+    
+    return NULL;
+}
 
 /**
  * Analogous to the standard C strdup function, but using SCM region.
@@ -74,7 +252,23 @@ void *scm_malloc(struct scm *scm, size_t n);
  * return: the base memory address of the duplicated C string or NULL on error
  */
 
-char *scm_strdup(struct scm *scm, const char *s);
+char *scm_strdup(struct scm *scm, const char *s) {
+    
+    if (!s) {
+        TRACE("s is NULL");
+        return NULL;
+    }
+
+    size_t length = strlen(s) + 1;
+    char *dest = scm_malloc(scm, length);
+    if (!dest) {
+        TRACE("dest scm_malloc failed");
+        return NULL;
+    }
+    memcpy(dest, s, length);
+
+    return dest;    
+}
 
 /**
  * Analogous to the standard C free function, but using SCM region.
@@ -83,7 +277,22 @@ char *scm_strdup(struct scm *scm, const char *s);
  * p  : a pointer to the start of a previously allocated memory
  */
 
-void scm_free(struct scm *scm, void *p);
+void scm_free(struct scm *scm, void *p) {
+
+    void *block_start = (char *)p - sizeof(short) - sizeof(size_t);
+    short status = *(short *)block_start;
+    size_t size = *(size_t *)(char *)block_start + sizeof(short);
+    void *utilized_addr = (char *)scm->addr - sizeof(size_t);
+
+    if (status == 1) {    
+        set_block_status(block_start, 2);
+        scm->utilized -= size;
+        set_utilized(utilized_addr, scm->utilized);    
+    }
+    else {
+        TRACE("region is empty");
+    }
+}
 
 /**
  * Returns the number of SCM bytes utilized thus far.
@@ -93,8 +302,10 @@ void scm_free(struct scm *scm, void *p);
  * return: the number of bytes utilized thus far
  */
 
-size_t scm_utilized(const struct scm *scm);
+size_t scm_utilized(const struct scm *scm) {
 
+    return scm->utilized;
+}
 /**
  * Returns the number of SCM bytes available in total.
  *
@@ -103,7 +314,10 @@ size_t scm_utilized(const struct scm *scm);
  * return: the number of bytes available in total
  */
 
-size_t scm_capacity(const struct scm *scm);
+size_t scm_capacity(const struct scm *scm) {
+    
+    return scm->capacity;
+}
 
 /**
  * Returns the base memory address withn the SCM region, i.e., the memory
@@ -115,4 +329,7 @@ size_t scm_capacity(const struct scm *scm);
  * return: the base memory address within the SCM region
  */
 
-void *scm_mbase(struct scm *scm);
+void *scm_mbase(struct scm *scm) {
+
+    return (char *)scm->addr + sizeof(short) + sizeof(size_t);
+}
