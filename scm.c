@@ -40,23 +40,23 @@ struct scm {
 };
 
 /* return 0 if it's regular file */
-int file_size(struct scm *scm) {
+struct scm *file_size(struct scm *scm) {
 
     struct stat st;
     
     if (fstat(scm->fd, &st) == -1) {
         TRACE("fstat failed");
-        return -1;
+        return NULL;
     }    
     if (!S_ISREG(st.st_mode)) {
         TRACE("not a regualr file");
-        return -1;        
+        return NULL;        
     }
 
-    scm->capacity = (st.st_size / page_size()) * page_size();
+    scm->capacity = st.st_size;
     scm->utilized = 0;
 
-    return (0 >= scm->capacity) ? -1 : 0;
+    return scm;
 }
 
 /**
@@ -70,9 +70,12 @@ int file_size(struct scm *scm) {
  */
 
 struct scm *scm_open(const char *pathname, int truncate) {
-
+ 
+    /*
     size_t curr;
     size_t vm_addr;
+    */
+
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
         TRACE("scm malloc failed");
@@ -86,13 +89,14 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    if (-1 == file_size(scm)) {
+    if (!file_size(scm)) {
         TRACE("file_size");
         close(scm->fd);
         free(scm);
         return NULL;
     }
 
+    /*
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
     if (vm_addr < curr) {
@@ -101,8 +105,9 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
+    */
 
-    scm->addr = mmap((void *)vm_addr, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
+    scm->addr = mmap((void *)VM_ADDR, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
     if (MAP_FAILED == scm->addr) {
         TRACE("mmap failed");
         close(scm->fd);
@@ -110,7 +115,6 @@ struct scm *scm_open(const char *pathname, int truncate) {
         return NULL;
     }
 
-    /* truncates the SCM region */
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
             TRACE("ftruncate failed");
@@ -123,7 +127,6 @@ struct scm *scm_open(const char *pathname, int truncate) {
     else {
         scm->utilized = *(size_t *)scm->addr;
     }
-    scm->addr = (char *)scm->addr + sizeof(size_t);
 
     return scm;
 }
@@ -190,11 +193,11 @@ void set_block_status(void *p, short status) {
 */
 void *scm_malloc(struct scm *scm, size_t n) {
 
-    void *start;
     void *curr;
     void *end;
-    size_t *block_size_addr;
-    short *status_addr;
+
+    short status;
+    size_t block_size;    
     size_t curr_size = n + sizeof(short) + sizeof(size_t);
 
     if (!n) {
@@ -202,14 +205,14 @@ void *scm_malloc(struct scm *scm, size_t n) {
         return NULL;
     }
 
-    start = (char *)scm->addr;
-    curr = start;
-    end = (char *)start + scm->capacity;
+    curr = (char *)scm->addr + sizeof(size_t);
+    end = (char *)scm->addr + scm->capacity;
 
     while (curr < end) {
-        /* free space */
-        status_addr = (short *)curr;
-        if (*status_addr == 0) {
+        status = *(short *)curr;
+
+        /* free and uninitialized space */
+        if (status == 0) {
             if ((char *)curr + curr_size > (char *)end) {
                 break;
             }
@@ -220,9 +223,9 @@ void *scm_malloc(struct scm *scm, size_t n) {
             return (char *)curr + sizeof(short) + sizeof(size_t);
         }
         /* used before, check if space is enough*/
-        else if (*status_addr == 2) {
-            block_size_addr = (size_t *)((char *)curr + sizeof(short));
-            if (*block_size_addr >= curr_size) {
+        else if (status == 2) {
+            block_size = *(size_t *)((char *)curr + sizeof(short));
+            if (block_size >= curr_size) {
                 scm->utilized += curr_size;
                 set_block_size(curr, curr_size);
                 set_block_status(curr, 1);
@@ -230,13 +233,13 @@ void *scm_malloc(struct scm *scm, size_t n) {
                 return (char *)curr + sizeof(short) + sizeof(size_t);
             }          
             else {
-                curr = (char *)curr + *block_size_addr;
+                curr = (char *)curr + block_size;
             }  
         }
         /* currently using*/
         else {
-            block_size_addr = (size_t *)((char *)curr + sizeof(short));
-            curr = (char *)curr + *block_size_addr;
+            block_size = *(size_t *)((char *)curr + sizeof(short));
+            curr = (char *)curr + block_size;
         }
     }
     
@@ -253,15 +256,17 @@ void *scm_malloc(struct scm *scm, size_t n) {
  */
 
 char *scm_strdup(struct scm *scm, const char *s) {
-    
+
+    size_t length;
+    char *dest;
+
     if (!s) {
         TRACE("s is NULL");
         return NULL;
     }
 
-    size_t length = strlen(s) + 1;
-    char *dest = scm_malloc(scm, length);
-    if (!dest) {
+    length = strlen(s) + 1;
+    if (!(dest = scm_malloc(scm, length))) {
         TRACE("dest scm_malloc failed");
         return NULL;
     }
@@ -280,9 +285,10 @@ char *scm_strdup(struct scm *scm, const char *s) {
 void scm_free(struct scm *scm, void *p) {
 
     void *block_start = (char *)p - sizeof(short) - sizeof(size_t);
+    void *utilized_addr = (char *)scm->addr - sizeof(size_t);
+
     short status = *(short *)block_start;
     size_t size = *(size_t *)(char *)block_start + sizeof(short);
-    void *utilized_addr = (char *)scm->addr - sizeof(size_t);
 
     if (status == 1) {    
         set_block_status(block_start, 2);
