@@ -113,14 +113,14 @@ struct scm *scm_open(const char *pathname, int truncate) {
         return NULL;
     }
     */
-   /* Try to expand the heap by `scm->capacity` bytes. */\
-   
-   if (sbrk(scm->capacity) == (void *)-1) {
+
+    /* Try to expand the heap by `scm->capacity` bytes. */   
+    if (sbrk(scm->capacity) == (void *)-1) {
         TRACE("sbrk failed");
         close(scm->fd);
         free(scm);
         return NULL;
-   }
+    }
 
     scm->addr = mmap((void *)VM_ADDR, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
     if (MAP_FAILED == scm->addr) {
@@ -129,7 +129,6 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    
 
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
@@ -158,6 +157,10 @@ struct scm *scm_open(const char *pathname, int truncate) {
 
 void scm_close(struct scm *scm) {
     
+    if (!scm) {
+        return;
+    }
+    
     if (scm->addr != MAP_FAILED) {
         if (msync(scm->addr, scm->capacity, MS_SYNC) == -1) {
             TRACE("mysync failed");
@@ -171,15 +174,14 @@ void scm_close(struct scm *scm) {
     if (scm->fd) {
         close(scm->fd);
     }
-    FREE(scm);
+    free(scm);
 }
 
 void set_block_size(void *p, size_t n) {
 
-    size_t *sizeLocation = (size_t *)((char *)p + sizeof(short));
-    *sizeLocation = n;
+    void *sizeLocation = (char *)p + sizeof(short);
+    *(size_t *)sizeLocation = n;
 }
-
 
 /* stored at the start of base address */
 void set_utilized(void *p, size_t n) {
@@ -192,7 +194,6 @@ void set_block_status(void *p, short status) {
     
     *(short *)p = status;
 }
-
 
 /**
  * Analogous to the standard C malloc function, but using SCM region.
@@ -224,6 +225,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
     }
     curr_size = n + sizeof(short) + sizeof(size_t);
 
+    /* skip size_t (utilized)*/
     curr = (char *)scm->addr + sizeof(size_t);
     end = (char *)scm->addr + scm->capacity;
     
@@ -238,7 +240,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
             scm->utilized += curr_size;
             set_block_size(curr, curr_size);
             set_block_status(curr, 1);
-            set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
+            set_utilized(scm->addr, scm->utilized);
             return (char *)curr + sizeof(short) + sizeof(size_t);
         }
         /* was allocated and free, check if space is enough for curr_size*/
@@ -247,7 +249,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
             if (block_size >= curr_size) {
                 scm->utilized += curr_size;
                 set_block_status(curr, 1);
-                set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
+                set_utilized(scm->addr, scm->utilized);
                 return (char *)curr + sizeof(short) + sizeof(size_t);
             }          
             else {
@@ -285,7 +287,8 @@ char *scm_strdup(struct scm *scm, const char *s) {
     }
 
     length = strlen(s) + 1;
-    if (!(dest = scm_malloc(scm, length))) {
+    dest = scm_malloc(scm, length);
+    if (!dest) {
         TRACE("dest scm_malloc failed");
         return NULL;
     }
@@ -304,7 +307,6 @@ char *scm_strdup(struct scm *scm, const char *s) {
 void scm_free(struct scm *scm, void *p) {
 
     void *block_start = (char *)p - sizeof(short) - sizeof(size_t);
-    void *utilized_addr = (char *)scm->addr - sizeof(size_t);
 
     short status = *(short *)block_start;
     size_t size = *(size_t *)(char *)block_start + sizeof(short);
@@ -312,7 +314,8 @@ void scm_free(struct scm *scm, void *p) {
     if (status == 1) {    
         set_block_status(block_start, 2);
         scm->utilized -= size;
-        set_utilized(utilized_addr, scm->utilized);    
+        set_utilized(scm->addr, scm->utilized);   
+        memset(p, 0, *(size_t *)((char *)block_start + sizeof(short))); 
     }
     else {
         TRACE("region is empty");
