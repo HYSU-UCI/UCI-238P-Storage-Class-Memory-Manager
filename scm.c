@@ -70,10 +70,10 @@ struct scm *file_size(struct scm *scm) {
 
 struct scm *scm_open(const char *pathname, int truncate) {
  
-    /*
+    
     size_t curr;
     size_t vm_addr;
-    */
+    
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
         TRACE("scm malloc failed");
@@ -96,11 +96,11 @@ struct scm *scm_open(const char *pathname, int truncate) {
         return NULL;
     }
 
-    /*
+    
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
     if (vm_addr < curr) {
-        TRACE("vm");
+        TRACE("vm_addr");
         close(scm->fd);
         free(scm);
         return NULL;
@@ -112,9 +112,10 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    */
+    
 
     /* Try to expand the heap by `scm->capacity` bytes. */   
+    /*
     if (sbrk(scm->capacity) == (void *)-1) {
         TRACE("sbrk failed");
         close(scm->fd);
@@ -129,6 +130,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
+    */
 
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
