@@ -27,13 +27,16 @@ exists(struct avl *avl, const char *s)
 }
 
 static int
-remove(struct avl *avl, const char *s) {
+remove_words(struct avl *avl, const char *s) {
 	
-	if (!exists(avl, s)) {
-		printf("'%s' does not exist\n", s);
+	if (!avl_exists(avl, s)) {
+		printf("'%s' does not exist, remove failed\n", s);
 		return 0;
 	}
-	
+
+	if (avl_remove(avl, s)) {
+        printf("error: failed to remove '%s'", s);
+    }
 	return 0;
 }
 
@@ -147,7 +150,7 @@ shell_fnc(void *arg, const char *s)
 		{ 1, "load", load },
 		{ 1, "insert", insert },
 		{ 1, "exists", exists },
-		{ 1, "remove", remove }
+		{ 1, "remove", remove_words }
 	};
 	struct avl *avl;
 	uint64_t i;

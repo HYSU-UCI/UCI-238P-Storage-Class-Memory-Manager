@@ -32,6 +32,11 @@
 
 #define VM_ADDR 0x600000000000
 
+#define META_HEAP_DATA_SIZE sizeof(size_t)
+#define META_BLOCK_BIT_SIZE sizeof(short)
+#define META_BLOCK_DATA_SIZE sizeof(size_t)
+#define META_BLOCK_SIZE (META_BLOCK_BIT_SIZE + META_BLOCK_DATA_SIZE)
+
 struct scm {
     int fd;
     void *addr;
@@ -75,12 +80,12 @@ struct scm *scm_open(const char *pathname, int truncate) {
     size_t curr;
     size_t vm_addr;
     */
-
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
         TRACE("scm malloc failed");
         return NULL;
     }
+    memset(scm, 0, sizeof(struct scm));
 
     assert(pathname);
     scm->fd = open(pathname, O_RDWR);
@@ -89,7 +94,8 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    if (!file_size(scm)) {
+    scm = file_size(scm);
+    if (!scm) {
         TRACE("file_size");
         close(scm->fd);
         free(scm);
@@ -100,14 +106,21 @@ struct scm *scm_open(const char *pathname, int truncate) {
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
     if (vm_addr < curr) {
-        TRACE("vm should be above");
+        TRACE("vm");
+        close(scm->fd);
+        free(scm);
+        return NULL;
+    }
+    scm->addr = mmap((void *)vm_addr, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
+    if (MAP_FAILED == scm->addr) {
+        TRACE("mmap failed");
         close(scm->fd);
         free(scm);
         return NULL;
     }
     */
-
-   /* Try to expand the heap by `scm->capacity` bytes. */
+   /* Try to expand the heap by `scm->capacity` bytes. */\
+   
    if (sbrk(scm->capacity) == (void *)-1) {
         TRACE("sbrk failed");
         close(scm->fd);
@@ -122,6 +135,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
+    
 
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
@@ -172,6 +186,7 @@ void set_block_size(void *p, size_t n) {
     *sizeLocation = n;
 }
 
+
 /* stored at the start of base address */
 void set_utilized(void *p, size_t n) {
     
@@ -193,13 +208,13 @@ void set_block_status(void *p, short status) {
  *
  * return: a pointer to the start of the allocated memory or NULL on error
  */
-
 /*
 +----------------+------------------+-----------------+
 | Block Status   | Block Size       | Data ...        |
 | (short)        | (size_t)         |                 |
 +----------------+------------------+-----------------+
 */
+
 void *scm_malloc(struct scm *scm, size_t n) {
 
     void *curr;
@@ -251,7 +266,8 @@ void *scm_malloc(struct scm *scm, size_t n) {
             curr = (char *)curr + block_size;
         }
     }
-    
+
+    TRACE("not enough space");    
     return NULL;
 }
 
