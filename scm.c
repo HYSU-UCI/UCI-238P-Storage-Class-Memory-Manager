@@ -187,7 +187,7 @@ void set_utilized(void *p, size_t n) {
     *(size_t *)p = n;
 }
 
-/* 0 = free, 1 = currently used, block_size == 0, 2 = used before, block_size != 0 */
+/* 0 = free, 1 = currently using, 2 = used before, block_size != 0 */
 void set_block_status(void *p, short status) {
     
     *(short *)p = status;
@@ -230,7 +230,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
     while (curr < end) {
         status = *(short *)curr;
 
-        /* free and uninitialized space */
+        /* uninitialized space */
         if (status == 0) {
             if ((char *)curr + curr_size > (char *)end) {
                 break;
@@ -241,7 +241,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
             set_utilized(scm->addr, scm->utilized);
             return (char *)curr + sizeof(short) + sizeof(size_t);
         }
-        /* was allocated and free, check if space is enough for curr_size*/
+        /* was allocated and removed, check if space is enough for curr_size*/
         else if (status == 2) {
             block_size = *(size_t *)((char *)curr + sizeof(short));
             if (block_size >= curr_size) {
