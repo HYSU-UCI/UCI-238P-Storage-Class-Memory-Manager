@@ -39,7 +39,7 @@ struct scm {
     size_t capacity;
 };
 
-/* return 0 if it's regular file */
+/* check if it's regular file, and set scm->capacity to file size */
 struct scm *file_size(struct scm *scm) {
 
     struct stat st;
@@ -107,6 +107,14 @@ struct scm *scm_open(const char *pathname, int truncate) {
     }
     */
 
+   /* Try to expand the heap by `scm->capacity` bytes. */
+   if (sbrk(scm->capacity) == (void *)-1) {
+        TRACE("sbrk failed");
+        close(scm->fd);
+        free(scm);
+        return NULL;
+   }
+
     scm->addr = mmap((void *)VM_ADDR, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
     if (MAP_FAILED == scm->addr) {
         TRACE("mmap failed");
@@ -124,6 +132,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         }
         scm->utilized = 0;       
     }
+    /* restore scm->utilized */
     else {
         scm->utilized = *(size_t *)scm->addr;
     }
@@ -169,7 +178,7 @@ void set_utilized(void *p, size_t n) {
     *(size_t *)p = n;
 }
 
-/* 0 = free, 1 = currently used, 2 = used before */
+/* 0 = free, 1 = currently used, block_size == 0, 2 = used before, block_size != 0 */
 void set_block_status(void *p, short status) {
     
     *(short *)p = status;
@@ -198,16 +207,17 @@ void *scm_malloc(struct scm *scm, size_t n) {
 
     short status;
     size_t block_size;    
-    size_t curr_size = n + sizeof(short) + sizeof(size_t);
+    size_t curr_size;
 
     if (!n) {
         TRACE("n is empty");
         return NULL;
     }
+    curr_size = n + sizeof(short) + sizeof(size_t);
 
     curr = (char *)scm->addr + sizeof(size_t);
     end = (char *)scm->addr + scm->capacity;
-
+    
     while (curr < end) {
         status = *(short *)curr;
 
@@ -222,12 +232,11 @@ void *scm_malloc(struct scm *scm, size_t n) {
             set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
             return (char *)curr + sizeof(short) + sizeof(size_t);
         }
-        /* used before, check if space is enough*/
+        /* was allocated and free, check if space is enough for curr_size*/
         else if (status == 2) {
             block_size = *(size_t *)((char *)curr + sizeof(short));
             if (block_size >= curr_size) {
                 scm->utilized += curr_size;
-                set_block_size(curr, curr_size);
                 set_block_status(curr, 1);
                 set_utilized((char *)scm->addr - sizeof(size_t), scm->utilized);
                 return (char *)curr + sizeof(short) + sizeof(size_t);
@@ -337,5 +346,6 @@ size_t scm_capacity(const struct scm *scm) {
 
 void *scm_mbase(struct scm *scm) {
 
-    return (char *)scm->addr + sizeof(short) + sizeof(size_t);
+    /* scm->addr + utilized + block1 status + block1 size */
+    return (char *)scm->addr + sizeof(size_t) + sizeof(short) + sizeof(size_t);
 }
