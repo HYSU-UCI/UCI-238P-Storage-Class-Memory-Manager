@@ -39,23 +39,24 @@ struct scm {
 };
 
 /* check if it's regular file, and set scm->capacity to file size */
-struct scm *file_size(struct scm *scm) {
+int file_size(struct scm *scm) {
 
     struct stat st;
     
     if (fstat(scm->fd, &st) == -1) {
         TRACE("fstat failed");
-        return NULL;
+        return -1;
     }    
     if (!S_ISREG(st.st_mode)) {
         TRACE("not a regualr file");
-        return NULL;        
+        return -1;
     }
 
-    scm->capacity = st.st_size;
+    /* scm->capacity = st.st_size; */
+    scm->capacity = (st.st_size / page_size()) * page_size();
     scm->utilized = 0;
 
-    return scm;
+    return (0 >= scm->capacity) ? -1 : 0;
 }
 
 /**
@@ -88,15 +89,14 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    scm = file_size(scm);
-    if (!scm) {
+    
+    if (-1 == file_size(scm)) {
         TRACE("file_size");
         close(scm->fd);
         free(scm);
         return NULL;
     }
 
-    
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
     if (vm_addr < curr) {
