@@ -31,12 +31,6 @@
 /* research the above Needed API and design accordingly */
 
 #define VM_ADDR 0x600000000000
-
-#define META_HEAP_DATA_SIZE sizeof(size_t)
-#define META_BLOCK_BIT_SIZE sizeof(short)
-#define META_BLOCK_DATA_SIZE sizeof(size_t)
-#define META_BLOCK_SIZE (META_BLOCK_BIT_SIZE + META_BLOCK_DATA_SIZE)
-
 struct scm {
     int fd;
     void *addr;
