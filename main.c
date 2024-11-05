@@ -11,6 +11,7 @@
 #include "term.h"
 #include "shell.h"
 
+
 static int
 exists(struct avl *avl, const char *s)
 {
@@ -22,6 +23,17 @@ exists(struct avl *avl, const char *s)
 	else {
 		printf("'%s' x %lu exists\n", s, (unsigned long)count);
 	}
+	return 0;
+}
+
+static int
+remove(struct avl *avl, const char *s) {
+	
+	if (!exists(avl, s)) {
+		printf("'%s' does not exist\n", s);
+		return 0;
+	}
+	
 	return 0;
 }
 
@@ -106,6 +118,7 @@ help(struct avl *avl, const char *s)
 	       "  load pathname : load words from file @ 'pathname'\n"
 	       "  insert word   : insert 'word'\n"
 	       "  exists word   : check if 'word' exists\n"
+		   "  remove word   : remove 'word'\n"
 	       "\n");
 	return 0;
 }
@@ -133,7 +146,8 @@ shell_fnc(void *arg, const char *s)
 		{ 0, "list", list },
 		{ 1, "load", load },
 		{ 1, "insert", insert },
-		{ 1, "exists", exists }
+		{ 1, "exists", exists },
+		{ 1, "remove", remove }
 	};
 	struct avl *avl;
 	uint64_t i;
