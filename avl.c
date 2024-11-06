@@ -211,68 +211,77 @@ remove_node(struct avl *avl, struct node *root, const char *item)
 		return NULL;
 	}
 
-	if (!(d = strcmp(item, root->item))) {
-		struct node *child;
-		
-		/* duplicate */
-		if (1 < root->count) {
-			--root->count;
-			--avl->state->items;
-			return root;
-		}
+	d = strcmp(item, root->item);
+	if (d > 0) {
+        root->right = remove_node(avl, root->right, item);
+    }
+    else if (d < 0) {
+        root->left = remove_node(avl, root->left, item);
+    }
+    else {
+        struct node *child;
+        char *new_item;
 
-		if (!root->left) {
-			child = root->right;
-			scm_free(avl->scm, (void *)root->item);
-			scm_free(avl->scm, root);
-			--avl->state->items;
-			--avl->state->unique;
-			return child;
-		}
-		else if (!root->right) {
-			child = root->left;
-			scm_free(avl->scm, (void *)root->item);
-			scm_free(avl->scm, root);
-			--avl->state->items;
-			--avl->state->unique;
-			return child;
-		}
+        if (root->count > 1) {
+            --root->count;
+            --avl->state->items;
+            return root;
+        }
 
-		child = root->right;
-		while (child->left) {
-			child = child->left;
-		}
-		
-		root->count = child->count;
-		root->right = remove_node(avl, root->right, child->item);
-		scm_free(avl->scm, (void *)child->item);
-		scm_free(avl->scm, child);
-		--avl->state->items;
-		--avl->state->unique;
-	}
-	else if (0 > d) {
-		root->left = remove_node(avl, root->left, item);
-		if (1 < abs(balance(root))) {
-			if (0 > strcmp(item, root->left->item)) {
-				root = rotate_right(root);
-			}
-			else {
-				root = rotate_left_right(root);
-			}
-		}
-	}
-	else {
-		root->right = remove_node(avl, root->right, item);
-		if (1 < abs(balance(root))) {
-			if (0 < strcmp(item, root->right->item)) {
-				root = rotate_left(root);
-			}
-			else {
-				root = rotate_right_left(root);
-			}
-		}
-	}
+        if (!root->left) {
+            child = root->right;
+            scm_free(avl->scm, (void *)root->item);
+            scm_free(avl->scm, root);
+            --avl->state->items;
+            --avl->state->unique;
+            return child;
+        }
+        else if (!root->right) {
+            child = root->left;
+            scm_free(avl->scm, (void *)root->item);
+            scm_free(avl->scm, root);
+            --avl->state->items;
+            --avl->state->unique;
+            return child;
+        }
+
+        child = root->right;
+        while (child->left) {
+            child = child->left;
+        }
+
+        new_item = scm_strdup(avl->scm, child->item);
+        if (!new_item) {
+            TRACE("avl item");
+            return NULL;
+        }
+
+        scm_free(avl->scm, (void *)root->item);
+        root->item = new_item;
+        root->count = child->count;
+        root->right = remove_node(avl, root->right, child->item);
+        --avl->state->items;
+        --avl->state->unique;
+    }
 	root->depth = depth(root->left, root->right);
+
+	if (1 < abs(balance(root))) {
+		/* left side is taller */
+        if (balance(root) < 0) { 
+            if (balance(root->left) <= 0) {
+                root = rotate_right(root);
+            } else {
+                root = rotate_left_right(root);
+            }
+        }
+        else { 
+            if (balance(root->right) >= 0) {
+                root = rotate_left(root);
+            } else {
+                root = rotate_right_left(root);
+            }
+        }
+    }
 
 	return root;
 }
