@@ -1,4 +1,12 @@
-# 238P OS Project3: Storage Class Memory Manager
+# 238P OS Project3
+
+Storage Class Memory Manager
+
+## Team members
+
+Shuyuan Fu  
+Yiyan Kong  
+Hungyau Su
 
 ## Overview
 
@@ -11,3 +19,8 @@ make
 dd if=/dev/zero of=file bs=4096 count=10000
 ./cs238 ./file
 ```
+
+## Known issue
+
+--truncate: avl_open: Assertion `avl->state == scm_mbase(avl->scm)' failed.
+sometimes removing words results in segmentaion faults (seems to be random).
