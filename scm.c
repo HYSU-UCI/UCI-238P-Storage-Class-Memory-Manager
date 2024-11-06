@@ -52,8 +52,8 @@ int file_size(struct scm *scm) {
         return -1;
     }
 
-    scm->capacity = st.st_size; 
-    /* scm->capacity = (st.st_size / page_size()) * page_size(); */
+    /* scm->capacity = st.st_size;  */
+    scm->capacity = (st.st_size / page_size()) * page_size(); 
     scm->utilized = 0;
 
     return (0 >= scm->capacity) ? -1 : 0;
@@ -71,10 +71,10 @@ int file_size(struct scm *scm) {
 
 struct scm *scm_open(const char *pathname, int truncate) {
  
-    /*
+    
     size_t curr;
     size_t vm_addr;
-    */
+    
 
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
@@ -97,7 +97,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    /*
+    
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
     if (vm_addr < curr) {
@@ -113,7 +113,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    */
+    /* this one cannot pass valgrind leak check
     if (sbrk(scm->capacity) == (void *)-1)
     {
         close(scm->fd);
@@ -127,7 +127,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    
+    */
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
             TRACE("ftruncate failed");
@@ -135,7 +135,8 @@ struct scm *scm_open(const char *pathname, int truncate) {
             free(scm);
             return NULL;
         }
-        scm->utilized = 0;       
+        scm->utilized = 0; 
+        memset(scm->addr, 0, scm->capacity);
     }
     /* restore scm->utilized */
     else {
