@@ -20,7 +20,20 @@ dd if=/dev/zero of=file bs=4096 count=10000
 ./cs238 ./file
 ```
 
+## Valgrind
+
+```
+valgrind --leak-check=full --log-file=valgrind_report.txt ./cs238 ./file
+```
+
+## Strace Output
+
+```
+strace -o trace_output.txt ./cs238 ./file
+```
+
 ## Known issue
 
---truncate: avl_open: Assertion `avl->state == scm_mbase(avl->scm)' failed.
-sometimes removing words results in segmentaion faults (seems to be random).
+sometimes removing words results in incorrect utilized data.
+
+sometimes when opening the file, error: vm_addr.

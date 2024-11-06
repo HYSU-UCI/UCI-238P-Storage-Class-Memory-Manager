@@ -68,13 +68,20 @@ int file_size(struct scm *scm) {
  *
  * return: an opaque handle or NULL on error
  */
+/*
++----------------+------------------+-----------------+
+| META Utilized  | Data block       | Data block      |
+| (size_t)       |                  |                 |
++----------------+------------------+-----------------+
+^
+|
+scm->addr
+*/
 
 struct scm *scm_open(const char *pathname, int truncate) {
  
-    
     size_t curr;
     size_t vm_addr;
-    
 
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
@@ -113,21 +120,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    /* this one cannot pass valgrind leak check
-    if (sbrk(scm->capacity) == (void *)-1)
-    {
-        close(scm->fd);
-        free(scm);
-        return NULL;
-    }
-    scm->addr = mmap((void *)VM_ADDR, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
-    if (MAP_FAILED == scm->addr) {
-        TRACE("mmap failed");
-        close(scm->fd);
-        free(scm);
-        return NULL;
-    }
-    */
+
     if (truncate) {
         if (ftruncate(scm->fd, scm->capacity) == -1) {
             TRACE("ftruncate failed");
@@ -205,9 +198,12 @@ void set_meta_utilized(struct scm *scm) {
  */
 /*
 +----------------+------------------+-----------------+
-| Block Status   | Block Size       | Data ...        |
+| Block Status   | Block Size = n   | Data ...        |
 | (short)        | (size_t)         |                 |
 +----------------+------------------+-----------------+
+^                                   ^
+|                                   |
+curr                                return this
 */
 
 void *scm_malloc(struct scm *scm, size_t n) {
@@ -217,14 +213,14 @@ void *scm_malloc(struct scm *scm, size_t n) {
 
     short status;
     size_t block_size;    
-    size_t data_size;
+    size_t total_size;
 
     if (n == 0) {
         TRACE("n is empty");
         return NULL;
     }
 
-    data_size = n + sizeof(short) + sizeof(size_t);
+    total_size = n + sizeof(short) + sizeof(size_t);
     /* skip meta_utilized*/
     curr = (char *)scm->addr + sizeof(size_t);
     end = (char *)scm->addr + scm->capacity;
@@ -234,32 +230,32 @@ void *scm_malloc(struct scm *scm, size_t n) {
 
         /* uninitialized space */
         if (status == 0) {
-            if ((char *)curr + data_size > (char *)end) {
+            if ((char *)curr + total_size > (char *)end) {
                 break;
             }
-            scm->utilized += data_size;
+            scm->utilized += total_size;
             set_block_status(curr, 1);
-            set_block_size(curr, data_size);            
+            set_block_size(curr, n); 
             set_meta_utilized(scm);
             return (char *)curr + sizeof(short) + sizeof(size_t);
         }
-        /* was allocated and removed, check if space is enough for data_size*/
+        /* was allocated and removed, check if space is enough for total_size*/
         else if (status == 2) {
             block_size = *(size_t *)((char *)curr + sizeof(short));
-            if (block_size >= data_size) {
-                scm->utilized += data_size;
+            if (block_size >= n) {
+                scm->utilized += total_size;
                 set_block_status(curr, 1);
                 set_meta_utilized(scm);
                 return (char *)curr + sizeof(short) + sizeof(size_t);
             }          
             else {
-                curr = (char *)curr + sizeof(short) + sizeof(size_t) + block_size;
+                curr = (char *)curr + sizeof(short) + sizeof(size_t) + block_size; 
             }  
         }
         /* currently using*/
         else {
             block_size = *(size_t *)((char *)curr + sizeof(short));
-            curr = (char *)curr + sizeof(short) + sizeof(size_t) + block_size;
+            curr = (char *)curr + sizeof(short) + sizeof(size_t) + block_size; 
         }
     }
 
@@ -309,13 +305,14 @@ void scm_free(struct scm *scm, void *p) {
     void *block_start = (char *)p - sizeof(size_t) - sizeof(short);
 
     short status = *(short *)block_start;
-    size_t size = *(size_t *)((char *)block_start + sizeof(short));
+    size_t block_size = *(size_t *)((char *)block_start + sizeof(short));
+    size_t total_size = block_size + sizeof(short) + sizeof(size_t);
 
     if (status == 1) {    
         set_block_status(block_start, 2);
-        scm->utilized -= size;
+        scm->utilized -= total_size;
         set_meta_utilized(scm);   
-        memset(p, 0, size);
+        memset(p, 0, block_size);
     }
     else {
         TRACE("block is empty");
