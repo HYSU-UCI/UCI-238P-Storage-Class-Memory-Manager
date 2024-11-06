@@ -313,10 +313,11 @@ void scm_free(struct scm *scm, void *p) {
         set_block_status(block_start, 2);
         scm->utilized -= size;
         set_utilized(scm->addr, scm->utilized);   
-        memset(p, 0, *(size_t *)((char *)block_start + sizeof(short))); 
+        /* clear data region*/
+        memset(p, 0, size - sizeof(short) - sizeof(size_t));
     }
     else {
-        TRACE("region is empty");
+        TRACE("block is empty");
     }
 }
 
