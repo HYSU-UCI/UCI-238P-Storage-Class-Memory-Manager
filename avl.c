@@ -213,6 +213,14 @@ remove_node(struct avl *avl, struct node *root, const char *item)
 
 	if (!(d = strcmp(item, root->item))) {
 		struct node *child;
+		
+		/* duplicate */
+		if (1 < root->count) {
+			--root->count;
+			--avl->state->items;
+			return root;
+		}
+
 		if (!root->left) {
 			child = root->right;
 			scm_free(avl->scm, (void *)root->item);
