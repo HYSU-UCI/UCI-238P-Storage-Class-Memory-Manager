@@ -201,7 +201,7 @@ avl_insert(struct avl *avl, const char *item)
 	avl->state->root = root;
 	return 0;
 }
-/*
+
 static struct node *
 remove_node(struct avl *avl, struct node *root, const char *item)
 {
@@ -212,53 +212,51 @@ remove_node(struct avl *avl, struct node *root, const char *item)
 	}
 
 	if (!(d = strcmp(item, root->item))) {
-		struct node *temp;
+		struct node *child;
 		if (!root->left) {
-			temp = root->right;
-			scm_free(avl->scm, root->item);
+			child = root->right;
+			scm_free(avl->scm, (void *)root->item);
 			scm_free(avl->scm, root);
 			--avl->state->items;
 			--avl->state->unique;
-			return temp;
+			return child;
 		}
 		else if (!root->right) {
-			temp = root->left;
-			scm_free(avl->scm, root->item);
+			child = root->left;
+			scm_free(avl->scm, (void *)root->item);
 			scm_free(avl->scm, root);
 			--avl->state->items;
 			--avl->state->unique;
-			return temp;
+			return child;
 		}
 
-		temp = root->right;
-		while (temp->left) {
-			temp = temp->left;
+		child = root->right;
+		while (child->left) {
+			child = child->left;
 		}
-
-		root->item = temp->item;
-		root->count = temp->count;
-		root->right = remove_node(avl, root->right, temp->item);
+		
+		root->count = child->count;
+		root->right = remove_node(avl, root->right, child->item);
+		scm_free(avl->scm, (void *)child->item);
+		scm_free(avl->scm, child);
+		--avl->state->items;
+		--avl->state->unique;
 	}
 	else if (0 > d) {
 		root->left = remove_node(avl, root->left, item);
-	}
-	else {
-		root->right = remove_node(avl, root->right, item);
-	}
-
-	root->depth = depth(root->left, root->right);
-
-	if (1 < abs(balance(root))) {
-		if (balance(root) > 1) {
-			if (balance(root->left) >= 0) {
+		if (1 < abs(balance(root))) {
+			if (0 > strcmp(item, root->left->item)) {
 				root = rotate_right(root);
 			}
 			else {
 				root = rotate_left_right(root);
 			}
 		}
-		else if (balance(root) < -1) {
-			if (balance(root->right) <= 0) {
+	}
+	else {
+		root->right = remove_node(avl, root->right, item);
+		if (1 < abs(balance(root))) {
+			if (0 < strcmp(item, root->right->item)) {
 				root = rotate_left(root);
 			}
 			else {
@@ -266,22 +264,23 @@ remove_node(struct avl *avl, struct node *root, const char *item)
 			}
 		}
 	}
+	root->depth = depth(root->left, root->right);
 
 	return root;
 }
-*/
+
 int avl_remove(struct avl *avl, const char *item) {
 	
     assert(avl);
     assert(safe_strlen(item));
-	/*
+	
     if (!avl->state->root) {
         TRACE("empty AVL");
         return -1;
     }
 
     avl->state->root = remove_node(avl, avl->state->root, item);
-	*/
+
     return 0;
 }
 
