@@ -107,12 +107,15 @@ struct scm *scm_open(const char *pathname, int truncate) {
     
     curr = (size_t)sbrk(0);
     vm_addr = (VM_ADDR / page_size()) * page_size();
+    printf("current sbrk: %lu\n", (unsigned long)curr);
+    printf("current vm_addr: %lu\n", (unsigned long)vm_addr);
     if (vm_addr < curr) {
         TRACE("vm_addr");
         close(scm->fd);
         free(scm);
         return NULL;
     }
+
     scm->addr = mmap((void *)vm_addr, scm->capacity, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, scm->fd, 0);
     if (MAP_FAILED == scm->addr) {
         TRACE("mmap failed");
@@ -120,8 +123,16 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-
+    /*
+    if (sbrk(*(size_t *)scm->addr) == (void *)-1)
+    {
+        close(scm->fd);
+        free(scm);
+        return NULL;
+    }
+    */
     if (truncate) {
+        /*  Ensures file size matches scm->capacity */
         if (ftruncate(scm->fd, scm->capacity) == -1) {
             TRACE("ftruncate failed");
             close(scm->fd);
@@ -154,6 +165,7 @@ void scm_close(struct scm *scm) {
     }
     
     if (scm->addr != MAP_FAILED) {
+        /* ensures changes made to theregion are written back to file. */
         if (msync(scm->addr, scm->capacity, MS_SYNC) == -1) {
             TRACE("mysync failed");
             return;
@@ -243,7 +255,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
         else if (status == 2) {
             block_size = *(size_t *)((char *)curr + sizeof(short));
             if (block_size >= n) {
-                scm->utilized += total_size;
+                scm->utilized += block_size + sizeof(short) + sizeof(size_t);
                 set_block_status(curr, 1);
                 set_meta_utilized(scm);
                 return (char *)curr + sizeof(short) + sizeof(size_t);
@@ -282,6 +294,7 @@ char *scm_strdup(struct scm *scm, const char *s) {
         return NULL;
     }
 
+    /* +1 for '\0' */
     length = strlen(s) + 1;
     dest = scm_malloc(scm, length);
     if (!dest) {
