@@ -34,6 +34,4 @@ strace -o trace_output.txt ./cs238 ./file
 
 ## Known issue
 
-sometimes removing words results in incorrect utilized data.
-
-sometimes when opening the file, error: vm_addr.
+sometimes, when opening the file, sbrk(0) might exceed vm_addr.

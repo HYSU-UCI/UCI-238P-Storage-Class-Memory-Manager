@@ -165,7 +165,7 @@ void scm_close(struct scm *scm) {
     }
     
     if (scm->addr != MAP_FAILED) {
-        /* ensures changes made to theregion are written back to file. */
+        /* ensures changes made to the region are written back to file. */
         if (msync(scm->addr, scm->capacity, MS_SYNC) == -1) {
             TRACE("mysync failed");
             return;
