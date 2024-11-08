@@ -31,7 +31,3 @@ valgrind --leak-check=full --log-file=valgrind_report.txt ./cs238 ./file
 ```
 strace -o trace_output.txt ./cs238 ./file
 ```
-
-## Known issue
-
-sometimes, when opening the file, sbrk(0) might exceed vm_addr.
