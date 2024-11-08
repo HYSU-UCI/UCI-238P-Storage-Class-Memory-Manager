@@ -259,7 +259,7 @@ remove_node(struct avl *avl, struct node *root, const char *item)
         scm_free(avl->scm, (void *)root->item);
         root->item = new_item;
         root->count = child->count;
-		printf("Replaced node with item: %s\n", root->item);
+		/* printf("Replaced node with item: %s\n", root->item); */
         root->right = remove_node(avl, root->right, child->item);
     }
 	root->depth = depth(root->left, root->right);

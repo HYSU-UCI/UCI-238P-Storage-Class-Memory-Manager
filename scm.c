@@ -42,6 +42,7 @@ struct scm {
 int file_size(struct scm *scm) {
 
     struct stat st;
+    size_t page = page_size();
     
     if (fstat(scm->fd, &st) == -1) {
         TRACE("fstat failed");
@@ -53,7 +54,7 @@ int file_size(struct scm *scm) {
     }
 
     /* scm->capacity = st.st_size;  */
-    scm->capacity = (st.st_size / page_size()) * page_size(); 
+    scm->capacity = (st.st_size / page) * page; 
     scm->utilized = 0;
 
     return (0 >= scm->capacity) ? -1 : 0;
@@ -82,6 +83,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
  
     size_t curr;
     size_t vm_addr;
+    size_t page = page_size();
 
     struct scm *scm = malloc(sizeof(struct scm));
     if (!scm) {
@@ -106,9 +108,11 @@ struct scm *scm_open(const char *pathname, int truncate) {
     }
     
     curr = (size_t)sbrk(0);
-    vm_addr = (VM_ADDR / page_size()) * page_size();
+    vm_addr = (VM_ADDR / page) * page;
+    /*
     printf("current sbrk: %lu\n", (unsigned long)curr);
     printf("current vm_addr: %lu\n", (unsigned long)vm_addr);
+    */
     if (vm_addr < curr) {
         TRACE("vm_addr");
         close(scm->fd);
