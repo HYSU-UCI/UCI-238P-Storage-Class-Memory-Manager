@@ -108,11 +108,15 @@ struct scm *scm_open(const char *pathname, int truncate) {
     }
     
     curr = (size_t)sbrk(0);
+    if (curr == (size_t)-1) {
+        return NULL;
+    }
     vm_addr = (VM_ADDR / page) * page;
     /*
     printf("current sbrk: %lu\n", (unsigned long)curr);
     printf("current vm_addr: %lu\n", (unsigned long)vm_addr);
     */
+    /* ensure the memory space does not collide with heap */
     if (vm_addr < curr) {
         TRACE("vm_addr");
         close(scm->fd);

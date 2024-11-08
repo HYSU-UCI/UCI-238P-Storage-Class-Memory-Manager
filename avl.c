@@ -265,7 +265,7 @@ remove_node(struct avl *avl, struct node *root, const char *item)
 	root->depth = depth(root->left, root->right);
 
 	if (1 < abs(balance(root))) {
-        if (balance(root) < 0) { 
+        if (balance(root) > 0) { 
 			/* LL */
             if (balance(root->left) <= 0) {
                 root = rotate_right(root);
