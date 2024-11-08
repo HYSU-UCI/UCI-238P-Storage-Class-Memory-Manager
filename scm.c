@@ -123,14 +123,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         free(scm);
         return NULL;
     }
-    /*
-    if (sbrk(*(size_t *)scm->addr) == (void *)-1)
-    {
-        close(scm->fd);
-        free(scm);
-        return NULL;
-    }
-    */
+
     if (truncate) {
         /*  Ensures file size matches scm->capacity */
         if (ftruncate(scm->fd, scm->capacity) == -1) {

@@ -261,26 +261,27 @@ remove_node(struct avl *avl, struct node *root, const char *item)
         root->count = child->count;
 		printf("Replaced node with item: %s\n", root->item);
         root->right = remove_node(avl, root->right, child->item);
-		/*
-        --avl->state->items;
-        --avl->state->unique;
-		*/
     }
 	root->depth = depth(root->left, root->right);
 
 	if (1 < abs(balance(root))) {
-		/* left side is taller */
         if (balance(root) < 0) { 
+			/* LL */
             if (balance(root->left) <= 0) {
                 root = rotate_right(root);
-            } else {
+            } 
+			/* LR */
+			else {
                 root = rotate_left_right(root);
             }
         }
         else { 
+			/* RR */
             if (balance(root->right) >= 0) {
                 root = rotate_left(root);
-            } else {
+            }
+			/* RL */ 
+			else {
                 root = rotate_right_left(root);
             }
         }
